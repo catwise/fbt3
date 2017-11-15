@@ -2,7 +2,7 @@
       character*20  NumStr
       real*4        ra, dec, lat, long, mjd, pa, fwdlong, sunlong,
      +              mjd0, fac, PAoffset, avg, sigma, AsceMin, AsceMax,
-     +              DescMin, DescMax
+     +              DescMin, DescMax, difflong
       real*8        dRA, dDec, dMJD, nullval, sum0, sum1, sumsq0, sumsq1
       integer*4     nargs, iargc, nOut, ScanDir, FileID, status,
      +              readwrite, blocksize, nrows, ncols, nRA, nDec,
@@ -23,7 +23,7 @@ c
       nargs = iargc()
       dbg = nargs .gt. 3
       if (nargs .lt. 2) then
-        print *,'fbt3 vsn 1.1  B71001'
+        print *,'fbt3 vsn 1.2  B71108'
         print *,'usage: fbt3 infile outfile <#.# <dbg>>'
         print *
         print *,
@@ -130,7 +130,9 @@ c
         end if
         fwdlong = sunlong - 90.0
         if (fwdlong .lt. 0.0) fwdlong = fwdlong + 360.0
-        if (abs(fwdlong - long) .lt. 90.0) then  ! looking forward
+        difflong = abs(fwdlong - long)
+        if (difflong .gt. 270.0) difflong = abs(difflong - 360.0)
+        if (difflong .lt. 90.0) then  ! looking forward
           ScanDir = 0                            ! desc
           n0 = n0 + 1
           sum0   = sum0   + pa
