@@ -141,6 +141,7 @@ c
         else                                     ! looking backward
           ScanDir = 1                            ! asce
           pa = pa + 180.0
+          if (pa .gt. 360.0) pa = pa - 360.0
           n1 = n1 + 1
           sum1   = sum1   + pa
           sumsq1 = sumsq1 + pa**2       
@@ -251,6 +252,7 @@ c-----------------------------------------------------------------------
 c
       pa = 90.0 - r2d*atan2(-sOb*sin(d2r*Dec)*sin(d2r*RA)
      +                      +cOb*cos(d2r*Dec), sOb*cos(d2r*RA))
+      if (pa .gt. 360.0) pa = pa - 360.0
 c     
       return
       end
