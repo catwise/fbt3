@@ -2,7 +2,7 @@
       character*20  NumStr
       real*4        ra, dec, lat, long, mjd, pa, fwdlong, sunlong,
      +              mjd0, fac, PAoffset, avg, sigma, AsceMin, AsceMax,
-     +              DescMin, DescMax, difflong
+     +              DescMin, DescMax, dot, d2r
       real*8        dRA, dDec, dMJD, nullval, sum0, sum1, sumsq0, sumsq1
       integer*4     nargs, iargc, nOut, ScanDir, FileID, status,
      +              readwrite, blocksize, nrows, ncols, nRA, nDec,
@@ -14,7 +14,7 @@
 c      
       data nOut/0/, dbg/.false./, mjd0/57103.0/,    ! 3/21/2015
      +     fac/0.9856263/,                          ! 360/365.25
-     +     PAoffset/0.0/, n0,n1/2*0/,
+     +     PAoffset/0.0/, n0,n1/2*0/, d2r/1.745329252e-2/,
      +     sum0,sum1,sumsq0,sumsq1/4*0.0d0/,
      +     AsceMin,DescMin/2*9.9e9/, AsceMax,DescMax/2*-9.9e9/ 
 c
@@ -23,7 +23,7 @@ c
       nargs = iargc()
       dbg = nargs .gt. 3
       if (nargs .lt. 2) then
-        print *,'fbt3 vsn 1.2  B71108'
+        print *,'fbt3 vsn 1.3  B71128'
         print *,'usage: fbt3 infile outfile <#.# <dbg>>'
         print *
         print *,
@@ -129,10 +129,9 @@ c
           go to 30
         end if
         fwdlong = sunlong - 90.0
-        if (fwdlong .lt. 0.0) fwdlong = fwdlong + 360.0
-        difflong = abs(fwdlong - long)
-        if (difflong .gt. 270.0) difflong = abs(difflong - 360.0)
-        if (difflong .lt. 90.0) then  ! looking forward
+        dot = cos(d2r*fwdlong)*cos(d2r*long)
+     +      + sin(d2r*fwdlong)*sin(d2r*long)
+        if (dot .gt. 0.0) then                   ! looking forward
           ScanDir = 0                            ! desc
           n0 = n0 + 1
           sum0   = sum0   + pa
