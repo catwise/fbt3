@@ -1,19 +1,21 @@
       character*500 InFNam, OutFnam
       character*20  NumStr
       real*4        ra, dec, lat, long, mjd, pa, fwdlong, sunlong,
-     +              mjd0, fac, PAoffset, avg, sigma, AsceMin, AsceMax,
-     +              DescMin, DescMax, dot, d2r
-      real*8        dRA, dDec, dMJD, nullval, sum0, sum1, sumsq0, sumsq1
+     +              fac, PAoffset, avg, sigma, AsceMin, AsceMax,
+     +              DescMin, DescMax, d2r
+      real*8        mjd0, dRA, dDec, dMJD, nullval, sum0, sum1,
+     +              sumsq0, sumsq1
       integer*4     nargs, iargc, nOut, ScanDir, FileID, status,
      +              readwrite, blocksize, nrows, ncols, nRA, nDec,
-     +              nMJD, nIncd, hdutype, k, felem, nelems, stat(4)
+     +              nMJD, nIncd, hdutype, k, felem, nelems, stat(4),
+     +              nPA, nAsce
       integer       n, n0, n1
-      byte          incd
-      logical*4     dbg
+      byte          incd, asce
+      logical*4     dbg, NEO3
       logical       anynull
 c      
-      data nOut/0/, dbg/.false./, mjd0/57103.0/,    ! 3/21/2015
-     +     fac/0.9856263/,                          ! 360/365.25
+      data nOut/0/, dbg/.false./, MJD0/57467.6875/, ! 3/20/2016 04 30 00
+     +     fac/0.9856101/,                          ! 360/365.256
      +     PAoffset/0.0/, n0,n1/2*0/, d2r/1.745329252e-2/,
      +     sum0,sum1,sumsq0,sumsq1/4*0.0d0/,
      +     AsceMin,DescMin/2*9.9e9/, AsceMax,DescMax/2*-9.9e9/ 
@@ -23,11 +25,11 @@ c
       nargs = iargc()
       dbg = nargs .gt. 3
       if (nargs .lt. 2) then
-        print *,'fbt3 vsn 1.3  B71128'
+        print *,'fbt3 vsn 1.4  B80124'
         print *,'usage: fbt3 infile outfile <#.# <dbg>>'
         print *
         print *,
-     +    'where: infile  is an unWISE NEO2 FITS binary table file'
+     +    'where: infile  is an unWISE FITS binary table file'
         print *,'       outfile is the ASCII-text file for PSFavr8'
         print *
         print *,
@@ -68,6 +70,24 @@ c-----------------------------------------------------------------------
       call ftgcno(FileID, .false., 'ra      ', nRA,  status)  ! row# for RA
       if (status .ne. 0) go to 3003
       if (dbg) print *,'Col. no and status for ra:      ', nRA, status
+c                                          ! check for NEO3
+      call ftgcno(FileID, .false., 'pa      ', nPA,  status)    ! row# for PA
+      NEO3 = (status .eq. 0)
+      status = 0
+      call ftgcno(FileID, .false., 'ascending', nAsce, status)  ! row# for ascending
+      NEO3 = NEO3 .and. (status .eq. 0)
+      If (NEO3) then
+        print *,'FBT is NEO3 format'
+      else
+        print *,'FBT is NEO2 format'
+      end if
+c
+      if (dbg .and. NEO3) then
+        print *,'Col. no and status for pa:       ', nPA, status
+        print *,'Col. no and status for ascending:', nAsce, status
+      end if
+c     
+      status = 0
       call ftgcno(FileID, .false., 'dec     ', nDec, status)  ! row# for Dec
       if (status .ne. 0) go to 3004
       if (dbg) print *,'Col. no and status for dec:     ', nDec, status
@@ -84,6 +104,11 @@ c
 c      
       do 100 n = 1, nrows
 c      
+        k = 4
+        call ftgcvb(FileID,nIncd,n,felem,nelems,0,incd,anynull,status)
+        if (status .ne. 0) go to 3000
+        if (incd .eq. 0) go to 100       
+        stat(4) = status
         k = 1
         call ftgcvd(FileID,nRA,n,felem,nelems,0.0d0,dRA,anynull,status)
         if (status .ne. 0) go to 3000
@@ -99,10 +124,6 @@ c
         if (status .ne. 0) go to 3000
         mjd = dMJD
         stat(3) = status
-        k = 4
-        call ftgcvb(FileID,nIncd,n,felem,nelems,0,incd,anynull,status)
-        if (status .ne. 0) go to 3000
-        stat(4) = status
 c        
         if (dbg .and. (n .eq. 1)) then
           print *,'n,felem,ra,status:  ', n, felem, dRA,  stat(1)
@@ -115,41 +136,63 @@ c
      +         //'            ScanDir    PA               MJD'
         end if
 c
-        if (incd .eq. 0) go to 100       
-        call cel2ec(ra, dec, long, lat)
-        call cel2pa(ra, dec, pa)
-        pa = pa - PAoffset
-        sunlong = (mjd - mjd0)*fac
-20      if (sunlong .gt. 360.0) then
-          sunlong = sunlong - 360.0
-          go to 20
+        
+        if (NEO3) then
+          k = 5
+          call ftgcve(FileID,nPA,n,felem,nelems,0.0d0,pa,anynull,status)
+          if (status .ne. 0) go to 3000
+          k = 6
+          call ftgcvb(FileID,nAsce,n,felem,nelems,0.0d0,asce,anynull,status)
+          if (status .ne. 0) go to 3000
+          ScanDir = asce
+          if (ScanDir .eq. 0) then
+            n0 = n0 + 1
+            sum0   = sum0   + pa
+            sumsq0 = sumsq0 + pa**2
+            if (pa .lt. DescMin) DescMin = pa
+            if (pa .gt. DescMax) DescMax = pa         
+          else
+            n1 = n1 + 1
+            sum1   = sum1   + pa
+            sumsq1 = sumsq1 + pa**2       
+            if (pa .lt. AsceMin) AsceMin = pa
+            if (pa .gt. AsceMax) AsceMax = pa          
+          end if
+        else
+          call cel2ec(ra, dec, long, lat)
+          call cel2pa(ra, dec, pa)
+          pa = pa - PAoffset
+          sunlong = (mjd - mjd0)*fac
+20        if (sunlong .gt. 360.0) then
+            sunlong = sunlong - 360.0
+            go to 20
+          end if
+30        if (sunlong .lt. 0.0) then
+            sunlong = sunlong + 360.0
+            go to 30
+          end if
+          fwdlong = sunlong - 90.0
+          if (cos(d2r*(long-fwdlong)) .gt. 0.0) then   ! looking forward
+            ScanDir = 0                                ! desc
+            n0 = n0 + 1
+            sum0   = sum0   + pa
+            sumsq0 = sumsq0 + pa**2
+            if (pa .lt. DescMin) DescMin = pa
+            if (pa .gt. DescMax) DescMax = pa
+          else                                         ! looking backward
+            ScanDir = 1                                ! asce
+            pa = pa + 180.0
+            if (pa .gt. 360.0) pa = pa - 360.0
+            n1 = n1 + 1
+            sum1   = sum1   + pa
+            sumsq1 = sumsq1 + pa**2       
+            if (pa .lt. AsceMin) AsceMin = pa
+            if (pa .gt. AsceMax) AsceMax = pa
+          end if
+          if (dbg) print *, ra, dec, long, lat,
+     +                      sunlong, fwdlong, ScanDir, pa, mjd
         end if
-30      if (sunlong .lt. 0.0) then
-          sunlong = sunlong + 360.0
-          go to 30
-        end if
-        fwdlong = sunlong - 90.0
-        dot = cos(d2r*fwdlong)*cos(d2r*long)
-     +      + sin(d2r*fwdlong)*sin(d2r*long)
-        if (dot .gt. 0.0) then                   ! looking forward
-          ScanDir = 0                            ! desc
-          n0 = n0 + 1
-          sum0   = sum0   + pa
-          sumsq0 = sumsq0 + pa**2
-          if (pa .lt. DescMin) DescMin = pa
-          if (pa .gt. DescMax) DescMax = pa
-        else                                     ! looking backward
-          ScanDir = 1                            ! asce
-          pa = pa + 180.0
-          if (pa .gt. 360.0) pa = pa - 360.0
-          n1 = n1 + 1
-          sum1   = sum1   + pa
-          sumsq1 = sumsq1 + pa**2       
-          if (pa .lt. AsceMin) AsceMin = pa
-          if (pa .gt. AsceMax) AsceMax = pa
-        end if
-        if (dbg) print *, ra, dec, long, lat,
-     +                    sunlong, fwdlong, ScanDir, pa, mjd
+c        
         write (12, '(I1,2F13.2)') ScanDir, pa, mjd
         nOut = nOut + 1
 100   continue      
